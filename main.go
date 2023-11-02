@@ -5,14 +5,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
+	"os"
+
 	"github.com/elastic/go-elasticsearch/v8"
 	"github.com/joho/godotenv"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
-	"log"
-	"os"
 )
 
 func main() {
@@ -21,9 +22,12 @@ func main() {
 		log.Fatalf("Error loading .env file: %v", err)
 	}
 
-	// Get MongoDB URI and Elasticsearch port from the environment variables
+	// Get configurations from the environment variables
 	mongoDBURI := os.Getenv("MONGODB_URI")
 	elasticSearchPort := os.Getenv("ELASTICSEARCH_PORT")
+	mongoDBName := os.Getenv("MONGO_DB_NAME")
+	mongoCollectionName := os.Getenv("MONGO_COLLECTION_NAME")
+	elasticsearchIndexName := os.Getenv("ELASTICSEARCH_INDEX_NAME")
 
 	// Connect to MongoDB
 	mongoClient, err := mongo.Connect(context.TODO(), options.Client().ApplyURI(mongoDBURI))
@@ -53,7 +57,7 @@ func main() {
 	fmt.Println("Connected to Elasticsearch!")
 
 	// Define the MongoDB collection to index
-	collection := mongoClient.Database("your_db_name").Collection("your_collection_name")
+	collection := mongoClient.Database(mongoDBName).Collection(mongoCollectionName)
 
 	// Retrieve documents from the MongoDB collection
 	cursor, err := collection.Find(context.Background(), bson.D{})
@@ -89,7 +93,7 @@ func main() {
 
 		// Index the JSON document in Elasticsearch
 		res, err := esClient.Index(
-			"your_index_name",                    // Index name
+			elasticsearchIndexName,               // Index name
 			bytes.NewReader(jsonBytes),           // Document body
 			esClient.Index.WithDocumentID(docID), // Document ID
 			esClient.Index.WithRefresh("true"),   // Refresh the index after the operation

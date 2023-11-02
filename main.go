@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"bytes"
+	"encoding/json"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"github.com/elastic/go-elasticsearch/v8"
 	"github.com/joho/godotenv"

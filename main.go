@@ -4,7 +4,8 @@ import (
 	"context"
 	"fmt"
 	"os"
-
+	"bytes"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"github.com/elastic/go-elasticsearch/v8"
 	"github.com/joho/godotenv"
 	"go.mongodb.org/mongo-driver/bson"
@@ -75,6 +76,45 @@ func main() {
 		// Indexing logic here
 		// Convert document to JSON or use it as is (if it's already in JSON form)
 		// Use esClient to index the document in Elasticsearch
+		// Convert BSON to JSON
+		jsonBytes, err := bson.MarshalExtJSON(document, false, false)
+		if err != nil {
+			panic(err)
+		}
+
+		// Elasticsearch expects document IDs to index data
+		// Assuming the MongoDB document has an "_id" field that can be used as the document ID
+		docID := document["_id"].(primitive.ObjectID).Hex()
+
+		// Index the JSON document in Elasticsearch
+		// The index name should be predefined or created before this operation
+		res, err := esClient.Index(
+			"index_name",                         // Index name
+			bytes.NewReader(jsonBytes),           // Document body
+			esClient.Index.WithDocumentID(docID), // Document ID
+			esClient.Index.WithRefresh("true"),   // Refresh the index after the operation
+		)
+		if err != nil {
+			// Handle error
+			fmt.Printf("Error indexing document ID %s: %s\n", docID, err)
+			continue
+		}
+		defer res.Body.Close()
+
+		if res.IsError() {
+			// Parse the response body to get the error message
+			var e map[string]interface{}
+			if err := json.NewDecoder(res.Body).Decode(&e); err != nil {
+				// Error parsing the response body
+				fmt.Printf("Error parsing the response body: %s\n", err)
+			} else {
+				// Elasticsearch error message
+				fmt.Printf("[%s] %s: %s\n", res.Status(), e["error"].(map[string]interface{})["type"], e["error"].(map[string]interface{})["reason"])
+			}
+		} else {
+			// Document indexed successfully
+			fmt.Printf("Document ID %s indexed successfully.\n", docID)
+		}
 	}
 
 	if err := cursor.Err(); err != nil {

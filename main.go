@@ -1,24 +1,24 @@
 package main
 
 import (
-	"context"
-	"fmt"
-	"os"
 	"bytes"
+	"context"
 	"encoding/json"
-	"go.mongodb.org/mongo-driver/bson/primitive"
+	"fmt"
 	"github.com/elastic/go-elasticsearch/v8"
 	"github.com/joho/godotenv"
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
+	"log"
+	"os"
 )
 
 func main() {
 	// Load .env file
-	err := godotenv.Load()
-	if err != nil {
-		panic("Error loading .env file")
+	if err := godotenv.Load(); err != nil {
+		log.Fatalf("Error loading .env file: %v", err)
 	}
 
 	// Get MongoDB URI and Elasticsearch port from the environment variables
@@ -28,13 +28,12 @@ func main() {
 	// Connect to MongoDB
 	mongoClient, err := mongo.Connect(context.TODO(), options.Client().ApplyURI(mongoDBURI))
 	if err != nil {
-		panic(err)
+		log.Fatalf("Error connecting to MongoDB: %v", err)
 	}
 
 	// Ping MongoDB to verify connection
-	err = mongoClient.Ping(context.TODO(), nil)
-	if err != nil {
-		panic(err)
+	if err := mongoClient.Ping(context.TODO(), nil); err != nil {
+		log.Fatalf("Error pinging MongoDB: %v", err)
 	}
 	fmt.Println("Connected to MongoDB!")
 
@@ -44,26 +43,22 @@ func main() {
 		Addresses: []string{elasticSearchAddr},
 	})
 	if err != nil {
-		panic(err)
+		log.Fatalf("Error creating Elasticsearch client: %v", err)
 	}
 
 	// Ping Elasticsearch to verify connection
-	_, err = esClient.Info()
-	if err != nil {
-		panic(err)
+	if _, err := esClient.Info(); err != nil {
+		log.Fatalf("Error pinging Elasticsearch: %v", err)
 	}
 	fmt.Println("Connected to Elasticsearch!")
 
 	// Define the MongoDB collection to index
-	collection := mongoClient.Database("tesseract").Collection("images")
-
-	// Here goes the logic for indexing the documents...
-	// (Omitted for brevity - please implement the logic to fetch from MongoDB and index to Elasticsearch)
+	collection := mongoClient.Database("your_db_name").Collection("your_collection_name")
 
 	// Retrieve documents from the MongoDB collection
 	cursor, err := collection.Find(context.Background(), bson.D{})
 	if err != nil {
-		panic(err)
+		log.Fatalf("Error finding documents: %v", err)
 	}
 	defer cursor.Close(context.Background())
 
@@ -71,55 +66,56 @@ func main() {
 	for cursor.Next(context.Background()) {
 		var document bson.M
 		if err := cursor.Decode(&document); err != nil {
-			panic(err)
+			log.Printf("Error decoding document: %v", err)
+			continue
 		}
 
-		// Indexing logic here
-		// Convert document to JSON or use it as is (if it's already in JSON form)
-		// Use esClient to index the document in Elasticsearch
-		// Convert BSON to JSON
-		jsonBytes, err := bson.MarshalExtJSON(document, false, false)
+		// Get the hex string representation of the ObjectID
+		if oid, ok := document["_id"].(primitive.ObjectID); ok {
+			document["_id"] = oid.Hex() // Replace ObjectID with its string representation
+		} else {
+			log.Printf("Error asserting _id to ObjectID for document: %v", document)
+			continue
+		}
+
+		jsonBytes, err := json.Marshal(document)
 		if err != nil {
-			panic(err)
+			log.Printf("Error marshaling document: %v", err)
+			continue
 		}
 
-		// Elasticsearch expects document IDs to index data
-		// Assuming the MongoDB document has an "_id" field that can be used as the document ID
-		docID := document["_id"].(primitive.ObjectID).Hex()
+		// Use the _id field as the Elasticsearch document ID
+		docID := document["_id"].(string)
 
 		// Index the JSON document in Elasticsearch
-		// The index name should be predefined or created before this operation
 		res, err := esClient.Index(
-			"image_index",                         // Index name
+			"your_index_name",                    // Index name
 			bytes.NewReader(jsonBytes),           // Document body
 			esClient.Index.WithDocumentID(docID), // Document ID
 			esClient.Index.WithRefresh("true"),   // Refresh the index after the operation
 		)
 		if err != nil {
-			// Handle error
-			fmt.Printf("Error indexing document ID %s: %s\n", docID, err)
+			log.Printf("Error indexing document ID %s: %v", docID, err)
 			continue
 		}
-		defer res.Body.Close()
-
 		if res.IsError() {
 			// Parse the response body to get the error message
 			var e map[string]interface{}
 			if err := json.NewDecoder(res.Body).Decode(&e); err != nil {
-				// Error parsing the response body
-				fmt.Printf("Error parsing the response body: %s\n", err)
+				log.Printf("Error parsing the response body: %v", err)
 			} else {
 				// Elasticsearch error message
-				fmt.Printf("[%s] %s: %s\n", res.Status(), e["error"].(map[string]interface{})["type"], e["error"].(map[string]interface{})["reason"])
+				log.Printf("[%s] %s: %s\n", res.Status(), e["error"].(map[string]interface{})["type"], e["error"].(map[string]interface{})["reason"])
 			}
 		} else {
 			// Document indexed successfully
-			fmt.Printf("Document ID %s indexed successfully.\n", docID)
+			log.Printf("Document ID %s indexed successfully.", docID)
 		}
+		res.Body.Close()
 	}
 
 	if err := cursor.Err(); err != nil {
-		panic(err)
+		log.Fatalf("Error with cursor: %v", err)
 	}
 
 	fmt.Println("Finished indexing data from MongoDB to Elasticsearch")

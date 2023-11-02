@@ -75,13 +75,14 @@ func main() {
 		}
 
 		// Get the hex string representation of the ObjectID
+		var docID string
 		if oid, ok := document["_id"].(primitive.ObjectID); ok {
-			document["_id"] = oid.Hex() // Replace ObjectID with its string representation
+			docID = oid.Hex()
 		} else {
 			log.Printf("Error asserting _id to ObjectID for document: %v", document)
 			continue
 		}
-
+		delete(document, "_id")
 		jsonBytes, err := json.Marshal(document)
 		if err != nil {
 			log.Printf("Error marshaling document: %v", err)
@@ -89,7 +90,6 @@ func main() {
 		}
 
 		// Use the _id field as the Elasticsearch document ID
-		docID := document["_id"].(string)
 
 		// Index the JSON document in Elasticsearch
 		res, err := esClient.Index(

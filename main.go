@@ -90,7 +90,7 @@ func main() {
 		// Index the JSON document in Elasticsearch
 		// The index name should be predefined or created before this operation
 		res, err := esClient.Index(
-			"index_name",                         // Index name
+			"image_index",                         // Index name
 			bytes.NewReader(jsonBytes),           // Document body
 			esClient.Index.WithDocumentID(docID), // Document ID
 			esClient.Index.WithRefresh("true"),   // Refresh the index after the operation
